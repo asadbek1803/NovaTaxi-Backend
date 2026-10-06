@@ -1,0 +1,93 @@
+{% extends 'panel/base.html' %}
+
+{% block title %}Qo'llab-quvvatlash - Nova Taxi Admin{% endblock %}
+{% block page_title %}Qo'llab-quvvatlash / Tiketlar{% endblock %}
+
+{% block content %}
+<!-- Stats -->
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+    <div class="bg-white rounded-2xl border border-gray-200 p-5 flex items-center gap-4">
+        <div class="w-12 h-12 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-500/20">
+            <i class="fa-solid fa-ticket text-lg"></i>
+        </div>
+        <div>
+            <p class="text-2xl font-bold text-gray-900">{{ total }}</p>
+            <p class="text-sm text-gray-500">Jami tiketlar</p>
+        </div>
+    </div>
+    <div class="bg-white rounded-2xl border border-gray-200 p-5 flex items-center gap-4">
+        <div class="w-12 h-12 bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl flex items-center justify-center text-white shadow-lg shadow-amber-500/20">
+            <i class="fa-solid fa-folder-open text-lg"></i>
+        </div>
+        <div>
+            <p class="text-2xl font-bold text-gray-900">{{ open_count }}</p>
+            <p class="text-sm text-gray-500">Ochiq</p>
+        </div>
+    </div>
+    <div class="bg-white rounded-2xl border border-gray-200 p-5 flex items-center gap-4">
+        <div class="w-12 h-12 bg-gradient-to-br from-green-400 to-emerald-500 rounded-xl flex items-center justify-center text-white shadow-lg shadow-emerald-500/20">
+            <i class="fa-solid fa-folder-check text-lg"></i>
+        </div>
+        <div>
+            <p class="text-2xl font-bold text-gray-900">{{ closed_count }}</p>
+            <p class="text-sm text-gray-500">Yopilgan</p>
+        </div>
+    </div>
+</div>
+
+<!-- Tickets Table -->
+<div class="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+    <div class="px-6 py-4 border-b border-gray-100">
+        <h3 class="font-semibold text-gray-800">
+            <i class="fa-solid fa-headset mr-2 text-gray-400"></i>Barcha Tiketlar
+        </h3>
+    </div>
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead class="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider">
+                <tr>
+                    <th class="px-6 py-3 text-left">ID</th>
+                    <th class="px-6 py-3 text-left">Mavzu</th>
+                    <th class="px-6 py-3 text-left">Xabar</th>
+                    <th class="px-6 py-3 text-left">Foydalanuvchi</th>
+                    <th class="px-6 py-3 text-left">Holat</th>
+                    <th class="px-6 py-3 text-left">Sana</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+                {% for ticket in tickets %}
+                <tr class="hover:bg-gray-50 transition-colors">
+                    <td class="px-6 py-3 font-mono text-xs text-gray-500">{{ ticket.id|truncatechars:16 }}</td>
+                    <td class="px-6 py-3 font-medium text-gray-800">{{ ticket.subject }}</td>
+                    <td class="px-6 py-3 text-gray-500 max-w-[250px] truncate">{{ ticket.message|truncatechars:40 }}</td>
+                    <td class="px-6 py-3 text-gray-600">{{ ticket.user.phone }}</td>
+                    <td class="px-6 py-3">
+                        {% if ticket.status == 'open' %}
+                        <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700">
+                            <i class="fa-solid fa-circle text-[6px]"></i> Ochiq
+                        </span>
+                        {% elif ticket.status == 'in_progress' %}
+                        <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
+                            <i class="fa-solid fa-spinner text-[8px]"></i> Ko'rib chiqilmoqda
+                        </span>
+                        {% else %}
+                        <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700">
+                            <i class="fa-solid fa-check text-[8px]"></i> Yopilgan
+                        </span>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-3 text-gray-500 text-xs">{{ ticket.created_at|date:"d M, H:i" }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="6" class="px-6 py-12 text-center text-gray-400">
+                        <i class="fa-solid fa-headset text-3xl mb-2 block"></i>
+                        Hozircha tiketlar yo'q
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

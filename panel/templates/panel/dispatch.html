@@ -1,0 +1,877 @@
+{% extends 'panel/base.html' %}
+{% load static %}
+
+{% block title %}Dispetcher Paneli - Nova Taxi Admin{% endblock %}
+{% block page_title %}Dispetcher Paneli{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+    #dispatch-map { height: 420px; border-radius: 1rem; z-index: 0; }
+    .leaflet-popup-content-wrapper { border-radius: 0.75rem; }
+    .leaflet-popup-tip { display: none; }
+
+    .pin-badge {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 6px 14px; border-radius: 9999px; font-size: 12px; font-weight: 700;
+        border: 2px solid; transition: all 0.15s; cursor: pointer;
+    }
+    .pin-badge.active { box-shadow: 0 0 0 3px rgba(0,0,0,0.08); transform: scale(1.05); }
+
+    .coord-flash { animation: flashIn 0.3s ease; }
+    @keyframes flashIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+
+    .addr-wrap { position: relative; }
+    .addr-dropdown {
+        position: absolute; top: calc(100% - 4px); left: 0; right: 0; z-index: 2000;
+        background: white; border: 1px solid #e5e7eb; border-radius: 0.75rem;
+        max-height: 240px; overflow-y: auto; box-shadow: 0 12px 32px rgba(0,0,0,0.15);
+        display: none;
+    }
+    .addr-dropdown.open { display: block; }
+    .addr-item {
+        display: flex; align-items: flex-start; gap: 10px;
+        padding: 10px 14px; cursor: pointer; border-bottom: 1px solid #f3f4f6;
+        transition: background 0.1s;
+    }
+    .addr-item:last-child { border-bottom: none; }
+    .addr-item:hover, .addr-item.focused { background: #f9fafb; }
+    .addr-item .addr-icon {
+        flex-shrink: 0; width: 28px; height: 28px; border-radius: 8px;
+        display: flex; align-items: center; justify-content: center; font-size: 11px; margin-top: 1px;
+    }
+    .addr-item .addr-text { flex: 1; min-width: 0; }
+    .addr-item .addr-main { font-size: 13px; font-weight: 600; color: #1f2937; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .addr-item .addr-sub { font-size: 11px; color: #9ca3af; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+
+    .addr-loading {
+        display: flex; align-items: center; justify-content: center; gap: 8px;
+        padding: 12px; font-size: 12px; color: #9ca3af;
+    }
+    .addr-spinner {
+        width: 16px; height: 16px; border: 2px solid #e5e7eb; border-top-color: #6366f1;
+        border-radius: 50%; animation: spin 0.6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+{% endblock %}
+
+{% block content %}
+<form method="post" id="dispatch-form">
+{% csrf_token %}
+<input type="hidden" name="action" value="create_ride">
+<input type="hidden" name="from_lat" id="from_lat" value="">
+<input type="hidden" name="from_lng" id="from_lng" value="">
+<input type="hidden" name="to_lat" id="to_lat" value="">
+<input type="hidden" name="to_lng" id="to_lng" value="">
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+    <!-- Left: Form + Map -->
+    <div class="lg:col-span-2 space-y-4">
+        <div class="bg-white rounded-2xl border border-gray-200 p-6">
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-nova-100 rounded-xl flex items-center justify-center">
+                        <i class="fa-solid fa-headset text-nova-600"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-semibold text-gray-800">Yangi buyurtma</h3>
+                        <p class="text-xs text-gray-500">Manzilni yozing yoki xaritada bosing</p>
+                    </div>
+                </div>
+                <button type="button" onclick="resetPins()"
+                        class="px-3 py-1.5 text-xs font-medium text-red-500 bg-red-50 rounded-lg hover:bg-red-100 transition">
+                    <i class="fa-solid fa-rotate-left mr-1"></i> Tozalash
+                </button>
+            </div>
+
+            <!-- Pin Mode Bar -->
+            <div class="flex items-center gap-3 mb-4">
+                <button type="button" id="btn-pin-from"
+                        class="pin-badge active bg-emerald-50 text-emerald-700 border-emerald-400">
+                    <span class="w-3 h-3 rounded-full bg-emerald-500 flex-shrink-0"></span>
+                    1. Qayerdan
+                </button>
+                <i class="fa-solid fa-arrow-right text-gray-300 text-xs"></i>
+                <button type="button" id="btn-pin-to"
+                        class="pin-badge bg-red-50 text-red-700 border-red-300">
+                    <span class="w-3 h-3 rounded-full bg-red-400 flex-shrink-0"></span>
+                    2. Qayerga
+                </button>
+                <span class="ml-auto text-[11px] text-gray-400" id="pin-mode-label">Xaritada bosing yoki manzil kiriting</span>
+            </div>
+
+            <!-- Region / District / MFY / Ko'cha Selector -->
+            <input type="hidden" name="region_id" id="region_id_hidden">
+            <input type="hidden" name="district_id" id="district_id_hidden">
+            <input type="hidden" name="mfy_id" id="mfy_id_hidden">
+            <input type="hidden" name="street_id" id="street_id_hidden">
+            <div class="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-4">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+                        <i class="fa-solid fa-map-location-dot mr-1"></i>Viloyat
+                    </label>
+                    <select id="region-select"
+                            class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition">
+                        <option value="">-- Viloyat tanlang --</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+                        <i class="fa-solid fa-location-crosshairs mr-1"></i>Tuman / Shahar
+                    </label>
+                    <select id="district-select" disabled
+                            class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition disabled:opacity-50 disabled:cursor-not-allowed">
+                        <option value="">-- Avval viloyatni tanlang --</option>
+                    </select>
+                </div>
+                <div id="mfy-wrap" class="hidden">
+                    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+                        <i class="fa-solid fa-building mr-1"></i>MFY / Qishloq
+                    </label>
+                    <select id="mfy-select" disabled
+                            class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition disabled:opacity-50 disabled:cursor-not-allowed">
+                        <option value="">-- Tanlang --</option>
+                    </select>
+                </div>
+                <div id="street-wrap" class="hidden">
+                    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+                        <i class="fa-solid fa-road mr-1"></i>Ko'cha
+                    </label>
+                    <select id="street-select" disabled
+                            class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition disabled:opacity-50 disabled:cursor-not-allowed">
+                        <option value="">-- Tanlang --</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Address Inputs with Search -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                <!-- FROM -->
+                <div class="addr-wrap" id="from-wrap">
+                    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+                        <span class="inline-block w-2 h-2 rounded-full bg-emerald-500 mr-1"></span>Qayerdan
+                    </label>
+                    <div class="relative">
+                        <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+                        <input type="text" name="from_address" id="from_address" required
+                               placeholder="Shahar, ko'cha, uy raqami..."
+                               autocomplete="off"
+                               class="w-full pl-9 pr-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition">
+                    </div>
+                    <div class="addr-dropdown" id="from-dropdown"></div>
+                    <p class="text-[11px] text-emerald-600 mt-1 font-medium coord-flash" id="from-coords-display"></p>
+                </div>
+                <!-- TO -->
+                <div class="addr-wrap" id="to-wrap">
+                    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+                        <span class="inline-block w-2 h-2 rounded-full bg-red-500 mr-1"></span>Qayerga
+                    </label>
+                    <div class="relative">
+                        <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+                        <input type="text" name="to_address" id="to_address" required
+                               placeholder="Shahar, ko'cha, uy raqami..."
+                               autocomplete="off"
+                               class="w-full pl-9 pr-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition">
+                    </div>
+                    <div class="addr-dropdown" id="to-dropdown"></div>
+                    <p class="text-[11px] text-red-500 mt-1 font-medium coord-flash" id="to-coords-display"></p>
+                </div>
+            </div>
+
+            <!-- Map -->
+            <div class="border border-gray-200 rounded-2xl overflow-hidden relative">
+                <div id="dispatch-map"></div>
+                <div id="map-feedback" class="absolute bottom-3 left-3 z-[1000] hidden bg-white/95 backdrop-blur rounded-xl shadow-lg px-4 py-2.5 border border-gray-200">
+                    <div class="flex items-center gap-2 text-sm font-semibold">
+                        <i class="fa-solid fa-check-circle text-green-500"></i>
+                        <span id="feedback-text"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Form Fields -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Mijoz telefoni</label>
+                    <input type="tel" name="passenger_phone" required placeholder="+998 9X XXX XX XX"
+                           class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-nova-500 focus:border-nova-500 outline-none transition">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Narx (UZS)</label>
+                    <input type="number" name="price" placeholder="0"
+                           class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-nova-500 focus:border-nova-500 outline-none transition">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Haydovchi</label>
+                    <select name="driver_id"
+                            class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-nova-500 focus:border-nova-500 outline-none transition">
+                        <option value="">-- Avtomatik --</option>
+                        {% for d in drivers %}
+                        <option value="{{ d.id }}">{{ d.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Kategoriya</label>
+                    <select name="category_id"
+                            class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-nova-500 focus:border-nova-500 outline-none transition">
+                        <option value="">-- Tanlang --</option>
+                        {% for cat in categories %}
+                        <option value="{{ cat.id }}">{{ cat.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="flex items-end">
+                    <button type="submit"
+                            class="w-full px-6 py-2.5 bg-nova-600 hover:bg-nova-700 text-white font-semibold rounded-xl shadow-lg shadow-nova-500/25 transition-all flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-paper-plane"></i> Buyurtma yaratish
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right: Drivers + Recent -->
+    <div class="space-y-4">
+        <div class="bg-white rounded-2xl border border-gray-200 p-5">
+            <h4 class="font-semibold text-gray-800 mb-3">
+                <i class="fa-solid fa-users mr-2 text-nova-500"></i> Faol haydovchilar: {{ drivers|length }}
+            </h4>
+            <div class="space-y-2 max-h-[380px] overflow-y-auto">
+                {% for d in drivers %}
+                <div class="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 transition">
+                    <div class="w-8 h-8 bg-nova-100 rounded-full flex items-center justify-center text-xs font-bold text-nova-700">
+                        {{ d.name|first|upper }}
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-medium text-gray-700 truncate">{{ d.name }}</p>
+                        <p class="text-[11px] text-gray-400">{{ d.phone }}</p>
+                    </div>
+                </div>
+                {% empty %}
+                <p class="text-sm text-gray-400 text-center py-4">Faol haydovchilar yo'q</p>
+                {% endfor %}
+            </div>
+        </div>
+
+        {% if recent_dispatched %}
+        <div class="bg-white rounded-2xl border border-gray-200 p-5">
+            <h4 class="font-semibold text-gray-800 mb-3">
+                <i class="fa-solid fa-clock-rotate-left mr-2 text-gray-400"></i>Oxirgi buyurtmalar
+            </h4>
+            <div class="space-y-2 max-h-48 overflow-y-auto">
+                {% for ride in recent_dispatched %}
+                <div class="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50 transition text-sm">
+                    <div class="min-w-0 flex-1">
+                        <p class="font-medium text-gray-700 truncate">{{ ride.passenger.phone|default:"Noma'lum" }}</p>
+                        <p class="text-[11px] text-gray-400 truncate">{{ ride.from_address|truncatechars:20 }} → {{ ride.to_address|truncatechars:20 }}</p>
+                    </div>
+                    <span class="ml-2 flex-shrink-0 text-xs px-2 py-0.5 rounded-full
+                        {% if ride.status == 'completed' %}bg-green-50 text-green-700
+                        {% elif ride.status == 'cancelled' %}bg-red-50 text-red-700
+                        {% elif ride.status == 'pending' %}bg-yellow-50 text-yellow-700
+                        {% else %}bg-blue-50 text-blue-700{% endif %}">
+                        {% if ride.status == 'completed' %}Tug.
+                        {% elif ride.status == 'cancelled' %}Bekor
+                        {% elif ride.status == 'pending' %}Kut.
+                        {% else %}{{ ride.status }}{% endif %}
+                    </span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function() {
+    const FARGONA = [40.3842, 71.7892];
+    const NOMINATIM = 'https://nominatim.openstreetmap.org';
+
+    // ══════════════════════════════════════════════
+    //  REGION / DISTRICT SELECTORS
+    // ══════════════════════════════════════════════
+
+    const regionSelect = document.getElementById('region-select');
+    const districtSelect = document.getElementById('district-select');
+    const mfySelect = document.getElementById('mfy-select');
+    const mfyWrap = document.getElementById('mfy-wrap');
+    const regionHidden = document.getElementById('region_id_hidden');
+    const districtHidden = document.getElementById('district_id_hidden');
+    const mfyHidden = document.getElementById('mfy_id_hidden');
+    const streetSelect = document.getElementById('street-select');
+    const streetWrap = document.getElementById('street-wrap');
+    const streetHidden = document.getElementById('street_id_hidden');
+    let pendingFlyTo = null;
+
+    let regionsData = [];
+
+    fetch('/panel/api/regions/')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            regionsData = data;
+            data.forEach(function(r) {
+                const opt = document.createElement('option');
+                opt.value = r.id;
+                opt.textContent = r.name;
+                regionSelect.appendChild(opt);
+            });
+        });
+
+    regionSelect.addEventListener('change', function() {
+        districtSelect.innerHTML = '<option value="">-- Tanlang --</option>';
+        districtHidden.value = this.value;
+        mfySelect.innerHTML = '<option value="">-- Tanlang --</option>';
+        mfyWrap.classList.add('hidden');
+        mfySelect.disabled = true;
+        mfyHidden.value = '';
+        streetSelect.innerHTML = '<option value="">-- Tanlang --</option>';
+        streetWrap.classList.add('hidden');
+        streetSelect.disabled = true;
+        streetHidden.value = '';
+
+        if (!this.value) {
+            districtSelect.disabled = true;
+            districtSelect.innerHTML = '<option value="">-- Avval viloyatni tanlang --</option>';
+            return;
+        }
+
+        regionHidden.value = this.value;
+        districtSelect.disabled = false;
+
+        const region = regionsData.find(function(r) { return r.id === regionSelect.value; });
+        if (!region) return;
+
+        region.districts.forEach(function(d) {
+            const opt = document.createElement('option');
+            opt.value = d.id;
+            opt.textContent = d.name;
+            opt.dataset.lat = d.lat;
+            opt.dataset.lng = d.lng;
+            districtSelect.appendChild(opt);
+        });
+    });
+
+    districtSelect.addEventListener('change', function() {
+        mfySelect.innerHTML = '<option value="">-- Tanlang --</option>';
+        mfyWrap.classList.add('hidden');
+        mfySelect.disabled = true;
+        mfyHidden.value = '';
+        streetSelect.innerHTML = '<option value="">-- Tanlang --</option>';
+        streetWrap.classList.add('hidden');
+        streetSelect.disabled = true;
+        streetHidden.value = '';
+
+        if (!this.value) {
+            districtHidden.value = regionSelect.value;
+            return;
+        }
+
+        districtHidden.value = this.value;
+
+        const region = regionsData.find(function(r) { return r.id === regionSelect.value; });
+        const district = region ? region.districts.find(function(d) { return d.id === districtSelect.value; }) : null;
+
+        if (district && district.mfys && district.mfys.length > 0) {
+            mfyWrap.classList.remove('hidden');
+            mfySelect.disabled = false;
+
+            const qishloqlar = district.mfys.filter(function(m) { return m.type === 'qishloq'; });
+            const shaharlar = district.mfys.filter(function(m) { return m.type === 'shahar'; });
+
+            if (qishloqlar.length > 0) {
+                const grpQ = document.createElement('optgroup');
+                grpQ.label = 'Qishloq MFY';
+                qishloqlar.forEach(function(m) {
+                    const o = document.createElement('option');
+                    o.value = m.id;
+                    o.textContent = m.name;
+                    o.dataset.lat = m.lat;
+                    o.dataset.lng = m.lng;
+                    grpQ.appendChild(o);
+                });
+                mfySelect.appendChild(grpQ);
+            }
+
+            if (shaharlar.length > 0) {
+                const grpS = document.createElement('optgroup');
+                grpS.label = 'Shahar MFY';
+                shaharlar.forEach(function(m) {
+                    const o = document.createElement('option');
+                    o.value = m.id;
+                    o.textContent = m.name;
+                    o.dataset.lat = m.lat;
+                    o.dataset.lng = m.lng;
+                    grpS.appendChild(o);
+                });
+                mfySelect.appendChild(grpS);
+            }
+        }
+
+        if (district && district.lat && district.lng) {
+            if (map) {
+                map.flyTo([parseFloat(district.lat), parseFloat(district.lng)], 13, { duration: 1.2 });
+            } else {
+                pendingFlyTo = [parseFloat(district.lat), parseFloat(district.lng)];
+            }
+        }
+    });
+
+    mfySelect.addEventListener('change', function() {
+        streetSelect.innerHTML = '<option value="">-- Tanlang --</option>';
+        streetWrap.classList.add('hidden');
+        streetSelect.disabled = true;
+        streetHidden.value = '';
+        mfyHidden.value = '';
+
+        if (!this.value) return;
+
+        mfyHidden.value = this.value;
+
+        const region = regionsData.find(function(r) { return r.id === regionSelect.value; });
+        const district = region ? region.districts.find(function(d) { return d.id === districtSelect.value; }) : null;
+        const mfy = district ? district.mfys.find(function(m) { return m.id === mfySelect.value; }) : null;
+
+        if (!mfy) return;
+
+        if (mfy.streets && mfy.streets.length > 0) {
+            streetWrap.classList.remove('hidden');
+            streetSelect.disabled = false;
+            mfy.streets.forEach(function(s) {
+                const o = document.createElement('option');
+                o.value = s.id;
+                o.textContent = s.name;
+                o.dataset.lat = s.lat;
+                o.dataset.lng = s.lng;
+                streetSelect.appendChild(o);
+            });
+        }
+
+        if (map) {
+            map.flyTo([parseFloat(mfy.lat), parseFloat(mfy.lng)], 15, { duration: 1.2 });
+        }
+    });
+
+    streetSelect.addEventListener('change', function() {
+        if (!this.value) {
+            streetHidden.value = '';
+            return;
+        }
+
+        const opt = this.options[this.selectedIndex];
+        const lat = parseFloat(opt.dataset.lat);
+        const lng = parseFloat(opt.dataset.lng);
+        if (isNaN(lat) || isNaN(lng)) return;
+
+        streetHidden.value = this.value;
+
+        if (map) {
+            map.flyTo([lat, lng], 17, { duration: 1.2 });
+        }
+    });
+
+    const map = L.map('dispatch-map', { zoomControl: true, doubleClickZoom: false }).setView(FARGONA, 12);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 19,
+    }).addTo(map);
+
+    if (pendingFlyTo) {
+        map.flyTo(pendingFlyTo, 13, { duration: 1.2 });
+        pendingFlyTo = null;
+    }
+
+    let pinMode = 'from';
+    let fromMarker = null, toMarker = null, routeLine = null;
+
+    const $ = id => document.getElementById(id);
+    const fromLatEl = $('from_lat'), fromLngEl = $('from_lng');
+    const toLatEl = $('to_lat'), toLngEl = $('to_lng');
+    const fromAddrEl = $('from_address'), toAddrEl = $('to_address');
+    const fromCoordsEl = $('from-coords-display'), toCoordsEl = $('to-coords-display');
+    const btnFrom = $('btn-pin-from'), btnTo = $('btn-pin-to');
+    const pinModeLabel = $('pin-mode-label');
+    const feedback = $('map-feedback'), feedbackText = $('feedback-text');
+
+    // ══════════════════════════════════════════════
+    //  INTELLIGENT ADDRESS PARSING
+    // ══════════════════════════════════════════════
+
+    function buildAddress(data) {
+        const a = data.address || {};
+        const parts = [];
+
+        if (a.road) {
+            let road = a.road;
+            if (a.house_number) road += ', ' + a.house_number + '-uy';
+            parts.push(road);
+        }
+
+        if (a.neighbourhood) {
+            parts.push(a.neighbourhood);
+        }
+
+        if (a.suburb && a.suburb !== a.neighbourhood) {
+            parts.push(a.suburb);
+        }
+
+        if (a.village && !a.city && !a.town) {
+            parts.push(a.village);
+        }
+
+        if (a.city_district) {
+            parts.push(a.city_district);
+        }
+
+        if (a.city) {
+            parts.push(a.city);
+        } else if (a.town) {
+            parts.push(a.town);
+        }
+
+        if (a.state && !a.city && !a.town && !a.village) {
+            parts.push(a.state);
+        }
+
+        if (parts.length === 0) {
+            return data.display_name ? data.display_name.split(',').slice(0, 3).join(',').trim() : '';
+        }
+
+        return parts.join(', ');
+    }
+
+    function buildShortContext(data) {
+        const a = data.address || {};
+        const parts = [];
+        if (a.city_district) parts.push(a.city_district);
+        if (a.state) parts.push(a.state);
+        if (a.country) parts.push(a.country);
+        return parts.join(', ');
+    }
+
+    // ══════════════════════════════════════════════
+    //  PIN MODE
+    // ══════════════════════════════════════════════
+
+    function setPinMode(mode) {
+        pinMode = mode;
+        btnFrom.className = 'pin-badge' + (mode === 'from' ? ' active bg-emerald-50 text-emerald-700 border-emerald-400' : ' bg-emerald-50 text-emerald-700 border-emerald-300');
+        btnTo.className = 'pin-badge' + (mode === 'to' ? ' active bg-red-50 text-red-700 border-red-400' : ' bg-red-50 text-red-700 border-red-300');
+        pinModeLabel.textContent = mode === 'from' ? 'Qayerdan belgilang' : 'Manzilni belgilang';
+    }
+    btnFrom.addEventListener('click', () => setPinMode('from'));
+    btnTo.addEventListener('click', () => setPinMode('to'));
+
+    // ══════════════════════════════════════════════
+    //  HELPERS
+    // ══════════════════════════════════════════════
+
+    function createPinIcon(color) {
+        return L.divIcon({
+            className: '',
+            html: `<div style="width:32px;height:32px;background:${color};border:3px solid white;border-radius:50%;box-shadow:0 2px 12px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;cursor:grab;">
+                <i class="fa-solid fa-location-dot" style="color:white;font-size:14px;"></i></div>`,
+            iconSize: [32, 32], iconAnchor: [16, 16],
+        });
+    }
+
+    function showFeedback(text, icon) {
+        feedbackText.textContent = text;
+        feedback.querySelector('i').className = 'fa-solid ' + icon;
+        feedback.classList.remove('hidden');
+        setTimeout(() => feedback.classList.add('hidden'), 2500);
+    }
+
+    function drawRoute() {
+        if (routeLine) map.removeLayer(routeLine);
+        if (fromMarker && toMarker) {
+            routeLine = L.polyline([fromMarker.getLatLng(), toMarker.getLatLng()],
+                { color: '#6366f1', weight: 3, opacity: 0.6, dashArray: '8,8' }).addTo(map);
+        }
+    }
+
+    // ══════════════════════════════════════════════
+    //  PLACE PIN (with drag support)
+    // ══════════════════════════════════════════════
+
+    function placePin(lat, lng, mode) {
+        const color = mode === 'from' ? '#10b981' : '#ef4444';
+        const label = mode === 'from' ? 'Qayerdan' : 'Qayerga';
+        const existing = mode === 'from' ? fromMarker : toMarker;
+        if (existing) map.removeLayer(existing);
+
+        const marker = L.marker([lat, lng], {
+            icon: createPinIcon(color),
+            draggable: true,
+        }).addTo(map);
+
+        marker.bindPopup(`<b style="color:${color}">${label}</b><br><small style="color:#999">Surchalash mumkin</small>`);
+
+        marker.on('dragend', function(e) {
+            const pos = e.target.getLatLng();
+            const newLat = pos.lat.toFixed(6);
+            const newLng = pos.lng.toFixed(6);
+            reverseGeocode(newLat, newLng, mode);
+            if (mode === 'from') {
+                fromLatEl.value = newLat;
+                fromLngEl.value = newLng;
+                fromCoordsEl.textContent = newLat + ', ' + newLng;
+            } else {
+                toLatEl.value = newLat;
+                toLngEl.value = newLng;
+                toCoordsEl.textContent = newLat + ', ' + newLng;
+            }
+            drawRoute();
+        });
+
+        if (mode === 'from') {
+            fromMarker = marker;
+            fromLatEl.value = lat; fromLngEl.value = lng;
+            fromCoordsEl.textContent = lat + ', ' + lng;
+        } else {
+            toMarker = marker;
+            toLatEl.value = lat; toLngEl.value = lng;
+            toCoordsEl.textContent = lat + ', ' + lng;
+        }
+        return marker;
+    }
+
+    // ══════════════════════════════════════════════
+    //  MAP CLICK
+    // ══════════════════════════════════════════════
+
+    map.on('click', function(e) {
+        const lat = e.latlng.lat.toFixed(6);
+        const lng = e.latlng.lng.toFixed(6);
+        placePin(lat, lng, pinMode);
+
+        if (pinMode === 'from') {
+            showFeedback('Qayerdan belgilandi!', 'fa-circle-check text-green-500');
+            setPinMode('to');
+        } else {
+            showFeedback('Manzil belgilandi — tayyor!', 'fa-circle-check text-green-500');
+            drawRoute();
+        }
+        reverseGeocode(lat, lng, pinMode === 'to' ? 'to' : 'from');
+    });
+
+    // ══════════════════════════════════════════════
+    //  REVERSE GEOCODE
+    // ══════════════════════════════════════════════
+
+    function reverseGeocode(lat, lng, target) {
+        fetch(`${NOMINATIM}/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&accept-language=uz,ru`,
+            { headers: { 'Accept': 'application/json' } })
+        .then(r => r.json()).then(data => {
+            if (data && data.address) {
+                const addr = buildAddress(data);
+                const el = target === 'from' ? fromAddrEl : toAddrEl;
+                if (addr && (!el.dataset.manual || el.dataset.manual !== '1')) {
+                    el.value = addr;
+                }
+            }
+        }).catch(() => {});
+    }
+
+    // ══════════════════════════════════════════════
+    //  FORWARD GEOCODE / SEARCH
+    // ══════════════════════════════════════════════
+
+    const searchCache = {};
+
+    function searchAddress(query, target) {
+        const key = query.toLowerCase().trim();
+        if (searchCache[key]) { renderResults(searchCache[key], target); return; }
+
+        const dd = $(target + '-dropdown');
+        dd.innerHTML = '<div class="addr-loading"><div class="addr-spinner"></div> Qidirilmoqda...</div>';
+        dd.classList.add('open');
+
+        const bounds = map.getBounds();
+        const sw = bounds.getSouthWest(), ne = bounds.getNorthEast();
+        const viewbox = `${sw.lng},${sw.lat},${ne.lng},${ne.lat}`;
+
+        fetch(`${NOMINATIM}/search?format=json&q=${encodeURIComponent(query)}&limit=8&addressdetails=1&accept-language=uz,ru&countrycodes=uz&viewbox=${viewbox}&bounded=0`,
+            { headers: { 'Accept': 'application/json' } })
+        .then(r => r.json()).then(results => {
+            searchCache[key] = results;
+            renderResults(results, target);
+        }).catch(() => {
+            dd.innerHTML = '<div class="addr-loading text-red-400">Xatolik yuz berdi</div>';
+        });
+    }
+
+    function renderResults(results, target) {
+        const dd = $(target + '-dropdown');
+        dd.innerHTML = '';
+        dd.classList.add('open');
+
+        if (results.length === 0) {
+            dd.innerHTML = '<div class="addr-loading text-gray-400">Natija topilmadi</div>';
+            return;
+        }
+
+        results.forEach(r => {
+            const type = r.type || 'place';
+            const ic = getIconColor(type, r);
+            const addr = buildAddress(r);
+            const context = buildShortContext(r);
+
+            const div = document.createElement('div');
+            div.className = 'addr-item';
+            div.dataset.lat = r.lat;
+            div.dataset.lon = r.lon;
+            div.dataset.addr = addr;
+            div.innerHTML = `
+                <div class="addr-icon" style="background:${ic.bg};color:${ic.fg};">
+                    <i class="fa-solid ${ic.icon}"></i>
+                </div>
+                <div class="addr-text">
+                    <div class="addr-main">${addr}</div>
+                    <div class="addr-sub">${context}</div>
+                </div>`;
+            div.addEventListener('click', () => selectResult(r, target));
+            dd.appendChild(div);
+        });
+    }
+
+    function selectResult(r, target) {
+        const lat = parseFloat(r.lat).toFixed(6);
+        const lng = parseFloat(r.lon).toFixed(6);
+        const addr = buildAddress(r);
+
+        placePin(lat, lng, target);
+        const el = target === 'from' ? fromAddrEl : toAddrEl;
+        el.value = addr;
+        el.dataset.manual = '';
+
+        const dd = $(target + '-dropdown');
+        dd.classList.remove('open');
+        dd.innerHTML = '';
+
+        map.setView([lat, lng], 16);
+
+        if (target === 'from') {
+            showFeedback('Qayerdan: ' + addr, 'fa-circle-check text-green-500');
+            setPinMode('to');
+        } else {
+            showFeedback('Qayerga: ' + addr, 'fa-circle-check text-green-500');
+            drawRoute();
+        }
+    }
+
+    function getIconColor(type, r) {
+        const a = r && r.address ? r.address : {};
+        if (['city', 'town', 'municipality'].includes(type))
+            return { bg: '#ede9fe', fg: '#7c3aed', icon: 'fa-city' };
+        if (['village', 'hamlet', 'locality'].includes(type))
+            return { bg: '#fef3c7', fg: '#d97706', icon: 'fa-house-chimney' };
+        if (['road', 'footway', 'pedestrian', 'residential', 'tertiary', 'secondary', 'primary'].includes(type))
+            return { bg: '#dbeafe', fg: '#2563eb', icon: 'fa-road' };
+        if (a.neighbourhood || a.suburb || ['suburb', 'district', 'neighbourhood', 'quarter'].includes(type))
+            return { bg: '#fef3c7', fg: '#d97706', icon: 'fa-map-location-dot' };
+        if (['stop', 'station', 'port', 'bus_stop'].includes(type))
+            return { bg: '#d1fae5', fg: '#059669', icon: 'fa-bus' };
+        if (a.house_number)
+            return { bg: '#fce7f3', fg: '#db2777', icon: 'fa-house' };
+        return { bg: '#f3f4f6', fg: '#6b7280', icon: 'fa-location-dot' };
+    }
+
+    // ══════════════════════════════════════════════
+    //  SEARCH INPUT HANDLERS
+    // ══════════════════════════════════════════════
+
+    function setupSearch(inputId, target) {
+        const el = $(inputId);
+        let timer = null;
+        let focusedIdx = -1;
+
+        el.addEventListener('input', function() {
+            this.dataset.manual = '1';
+            clearTimeout(timer);
+            const val = this.value.trim();
+            focusedIdx = -1;
+            if (val.length < 2) {
+                $(target + '-dropdown').classList.remove('open');
+                return;
+            }
+            timer = setTimeout(() => searchAddress(val, target), 350);
+        });
+
+        el.addEventListener('keydown', function(e) {
+            const dd = $(target + '-dropdown');
+            const items = dd.querySelectorAll('.addr-item');
+            if (!items.length) return;
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                focusedIdx = Math.min(focusedIdx + 1, items.length - 1);
+                items.forEach((it, i) => it.classList.toggle('focused', i === focusedIdx));
+                if (items[focusedIdx]) items[focusedIdx].scrollIntoView({ block: 'nearest' });
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                focusedIdx = Math.max(focusedIdx - 1, 0);
+                items.forEach((it, i) => it.classList.toggle('focused', i === focusedIdx));
+                if (items[focusedIdx]) items[focusedIdx].scrollIntoView({ block: 'nearest' });
+            } else if (e.key === 'Enter' && focusedIdx >= 0) {
+                e.preventDefault();
+                items[focusedIdx].click();
+            } else if (e.key === 'Escape') {
+                dd.classList.remove('open');
+            }
+        });
+
+        el.addEventListener('focus', function() {
+            if ($(target + '-dropdown').querySelectorAll('.addr-item').length > 0) {
+                $(target + '-dropdown').classList.add('open');
+            }
+        });
+    }
+
+    setupSearch('from_address', 'from');
+    setupSearch('to_address', 'to');
+
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('#from-wrap')) $('from-dropdown').classList.remove('open');
+        if (!e.target.closest('#to-wrap')) $('to-dropdown').classList.remove('open');
+    });
+
+    // ══════════════════════════════════════════════
+    //  RESET
+    // ══════════════════════════════════════════════
+
+    window.resetPins = function() {
+        if (fromMarker) { map.removeLayer(fromMarker); fromMarker = null; }
+        if (toMarker) { map.removeLayer(toMarker); toMarker = null; }
+        if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
+        fromLatEl.value = ''; fromLngEl.value = '';
+        toLatEl.value = ''; toLngEl.value = '';
+        fromAddrEl.value = ''; toAddrEl.value = '';
+        fromCoordsEl.textContent = ''; toCoordsEl.textContent = '';
+        fromAddrEl.dataset.manual = ''; toAddrEl.dataset.manual = '';
+        $('from-dropdown').classList.remove('open');
+        $('to-dropdown').classList.remove('open');
+        if (regionSelect) regionSelect.value = '';
+        if (districtSelect) { districtSelect.value = ''; districtSelect.disabled = true; districtSelect.innerHTML = '<option value="">-- Avval viloyatni tanlang --</option>'; }
+        if (mfySelect) { mfySelect.value = ''; mfySelect.disabled = true; mfySelect.innerHTML = '<option value="">-- Tanlang --</option>'; }
+        if (mfyWrap) mfyWrap.classList.add('hidden');
+        if (streetSelect) { streetSelect.value = ''; streetSelect.disabled = true; streetSelect.innerHTML = '<option value="">-- Tanlang --</option>'; }
+        if (streetWrap) streetWrap.classList.add('hidden');
+        if (regionHidden) regionHidden.value = '';
+        if (districtHidden) districtHidden.value = '';
+        if (mfyHidden) mfyHidden.value = '';
+        if (streetHidden) streetHidden.value = '';
+        setPinMode('from');
+    };
+
+    setTimeout(() => map.invalidateSize(), 100);
+})();
+</script>
+{% endblock %}

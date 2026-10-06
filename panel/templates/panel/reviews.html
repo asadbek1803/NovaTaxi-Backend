@@ -1,0 +1,123 @@
+{% extends 'panel/base.html' %}
+
+{% block title %}Sharhlar - Nova Taxi Admin{% endblock %}
+{% block page_title %}Sharhlar va baholar{% endblock %}
+
+{% block content %}
+<!-- Stats -->
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+    <div class="bg-white rounded-2xl border border-gray-200 p-5 flex items-center gap-4">
+        <div class="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center">
+            <i class="fa-solid fa-star text-amber-500 text-xl"></i>
+        </div>
+        <div>
+            <p class="text-2xl font-bold text-gray-900">{{ overall_avg }}</p>
+            <p class="text-sm text-gray-500">O'rtacha baho</p>
+        </div>
+    </div>
+    <div class="bg-white rounded-2xl border border-gray-200 p-5 flex items-center gap-4">
+        <div class="w-12 h-12 bg-nova-100 rounded-xl flex items-center justify-center">
+            <i class="fa-solid fa-comments text-nova-600 text-xl"></i>
+        </div>
+        <div>
+            <p class="text-2xl font-bold text-gray-900">{{ total_reviews }}</p>
+            <p class="text-sm text-gray-500">Jami sharhlar</p>
+        </div>
+    </div>
+    <div class="bg-white rounded-2xl border border-gray-200 p-5 flex items-center gap-4">
+        <div class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
+            <i class="fa-solid fa-users text-green-600 text-xl"></i>
+        </div>
+        <div>
+            <p class="text-2xl font-bold text-gray-900">{{ driver_stats|length }}</p>
+            <p class="text-sm text-gray-500">Baholangan haydovchilar</p>
+        </div>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Reviews List -->
+    <div class="lg:col-span-2 bg-white rounded-2xl border border-gray-200 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100">
+            <h3 class="font-semibold text-gray-800">
+                <i class="fa-solid fa-message mr-2 text-gray-400"></i>So'nggi sharhlar
+            </h3>
+        </div>
+        <div class="divide-y divide-gray-100">
+            {% for ride in rides_with_reviews %}
+            <div class="px-6 py-4 hover:bg-gray-50 transition-colors">
+                <div class="flex items-start justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center text-sm font-bold text-gray-600">
+                            {{ ride.passenger.full_name|first|upper|default:"?" }}
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-gray-800">{{ ride.passenger.full_name|default:ride.passenger.phone }}</p>
+                            <p class="text-[11px] text-gray-400">{{ ride.created_at|date:"d M, H:i" }}</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-1">
+                        {% for i in "12345" %}
+                            {% if forloop.counter <= ride.rating %}
+                            <i class="fa-solid fa-star text-amber-400 text-xs"></i>
+                            {% else %}
+                            <i class="fa-regular fa-star text-gray-300 text-xs"></i>
+                            {% endif %}
+                        {% endfor %}
+                        <span class="ml-1 text-sm font-semibold text-gray-700">{{ ride.rating }}</span>
+                    </div>
+                </div>
+                <div class="mt-2 ml-13 pl-[52px]">
+                    <p class="text-xs text-gray-500">
+                        Haydovchi: <span class="font-medium text-gray-700">{{ ride.driver.name|default:"Noma'lum" }}</span>
+                        {% if ride.rating_comment %}
+                        <span class="ml-2 text-gray-400">|</span>
+                        <span class="ml-2 italic">"{{ ride.rating_comment }}"</span>
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+            {% empty %}
+            <div class="px-6 py-16 text-center text-gray-400">
+                <i class="fa-solid fa-star text-4xl mb-3 block"></i>
+                <p class="font-medium">Hozircha sharhlar yo'q</p>
+                <p class="text-sm mt-1">Sayohatlar tugallangandan keyin sharhlar paydo bo'ladi</p>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Driver Leaderboard -->
+    <div class="bg-white rounded-2xl border border-gray-200 p-5">
+        <div class="mb-4">
+            <h3 class="font-semibold text-gray-800">
+                <i class="fa-solid fa-trophy mr-2 text-amber-500"></i>Haydovchilar reytingi
+            </h3>
+            <p class="text-xs text-gray-500 mt-0.5">O'rtacha bo'yicha</p>
+        </div>
+        <div class="space-y-3">
+            {% for d in driver_stats %}
+            <div class="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-colors">
+                <span class="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold
+                    {% if forloop.counter == 1 %}bg-amber-100 text-amber-700
+                    {% elif forloop.counter == 2 %}bg-gray-200 text-gray-600
+                    {% elif forloop.counter == 3 %}bg-orange-100 text-orange-700
+                    {% else %}bg-gray-100 text-gray-500{% endif %}">
+                    {{ forloop.counter }}
+                </span>
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-gray-800 truncate">{{ d.name }}</p>
+                    <p class="text-[11px] text-gray-400">{{ d.review_count }} ta baholash</p>
+                </div>
+                <div class="flex items-center gap-1">
+                    <i class="fa-solid fa-star text-amber-400 text-xs"></i>
+                    <span class="text-sm font-bold text-gray-800">{{ d.avg_rating|floatformat:1 }}</span>
+                </div>
+            </div>
+            {% empty %}
+            <p class="text-sm text-gray-400 text-center py-6">Ma'lumot yo'q</p>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

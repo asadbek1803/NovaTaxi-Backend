@@ -1,0 +1,111 @@
+{% extends 'panel/base.html' %}
+
+{% block title %}Haydovchilar - Nova Taxi Admin{% endblock %}
+{% block page_title %}Haydovchilar{% endblock %}
+
+{% block content %}
+<!-- Stats -->
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+    <div class="bg-white rounded-2xl border border-gray-200 p-5 flex items-center gap-4">
+        <div class="w-12 h-12 bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl flex items-center justify-center text-white shadow-lg shadow-amber-500/20">
+            <i class="fa-solid fa-car-side text-lg"></i>
+        </div>
+        <div>
+            <p class="text-2xl font-bold text-gray-900">{{ total }}</p>
+            <p class="text-sm text-gray-500">Jami haydovchilar</p>
+        </div>
+    </div>
+    <div class="bg-white rounded-2xl border border-gray-200 p-5 flex items-center gap-4">
+        <div class="w-12 h-12 bg-gradient-to-br from-green-400 to-emerald-500 rounded-xl flex items-center justify-center text-white shadow-lg shadow-emerald-500/20">
+            <i class="fa-solid fa-check-circle text-lg"></i>
+        </div>
+        <div>
+            <p class="text-2xl font-bold text-gray-900">{{ verified }}</p>
+            <p class="text-sm text-gray-500">Tasdiqlangan</p>
+        </div>
+    </div>
+    <div class="bg-white rounded-2xl border border-gray-200 p-5 flex items-center gap-4">
+        <div class="w-12 h-12 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-500/20">
+            <i class="fa-solid fa-toggle-on text-lg"></i>
+        </div>
+        <div>
+            <p class="text-2xl font-bold text-gray-900">{{ active }}</p>
+            <p class="text-sm text-gray-500">Faol</p>
+        </div>
+    </div>
+</div>
+
+<!-- Drivers Table -->
+<div class="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+    <div class="px-6 py-4 border-b border-gray-100">
+        <h3 class="font-semibold text-gray-800">
+            <i class="fa-solid fa-car mr-2 text-gray-400"></i>Barcha Haydovchilar
+        </h3>
+    </div>
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead class="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider">
+                <tr>
+                    <th class="px-6 py-3 text-left">ID</th>
+                    <th class="px-6 py-3 text-left">Ism</th>
+                    <th class="px-6 py-3 text-left">Telefon</th>
+                    <th class="px-6 py-3 text-left">Mashina</th>
+                    <th class="px-6 py-3 text-left">Davr</th>
+                    <th class="px-6 py-3 text-left">Reyting</th>
+                    <th class="px-6 py-3 text-left">Holat</th>
+                    <th class="px-6 py-3 text-left">Ro'yxatdan o'tgan</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+                {% for driver in drivers %}
+                <tr class="hover:bg-gray-50 transition-colors">
+                    <td class="px-6 py-3 font-mono text-xs text-gray-500">{{ driver.id|truncatechars:16 }}</td>
+                    <td class="px-6 py-3">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                                {{ driver.name|first|upper }}
+                            </div>
+                            <span class="font-medium text-gray-800">{{ driver.name }}</span>
+                        </div>
+                    </td>
+                    <td class="px-6 py-3 text-gray-600">{{ driver.phone }}</td>
+                    <td class="px-6 py-3 text-gray-600">{{ driver.car_model }} <span class="text-gray-400">|</span> {{ driver.license_plate }}</td>
+                    <td class="px-6 py-3">
+                        {% if driver.category %}
+                        <span class="px-2.5 py-1 rounded-full text-xs font-medium bg-nova-50 text-nova-700">{{ driver.category.name }}</span>
+                        {% else %}
+                        <span class="text-gray-400">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-3">
+                        <div class="flex items-center gap-1">
+                            <i class="fa-solid fa-star text-amber-400 text-xs"></i>
+                            <span class="font-semibold text-gray-800">{{ driver.rating|floatformat:1 }}</span>
+                        </div>
+                    </td>
+                    <td class="px-6 py-3">
+                        {% if driver.is_verified %}
+                        <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700">
+                            <i class="fa-solid fa-check text-[8px]"></i> Tasdiqlangan
+                        </span>
+                        {% else %}
+                        <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-50 text-yellow-700">
+                            <i class="fa-solid fa-hourglass text-[8px]"></i> Kutilmoqda
+                        </span>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-3 text-gray-500 text-xs">{{ driver.created_at|date:"d M Y" }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="8" class="px-6 py-12 text-center text-gray-400">
+                        <i class="fa-solid fa-car text-3xl mb-2 block"></i>
+                        Hozircha haydovchilar yo'q
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

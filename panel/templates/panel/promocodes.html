@@ -1,0 +1,162 @@
+{% extends 'panel/base.html' %}
+
+{% block title %}Promokodlar - Nova Taxi Admin{% endblock %}
+{% block page_title %}Promokodlar{% endblock %}
+
+{% block content %}
+<!-- Stats -->
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+    <div class="bg-white rounded-2xl border border-gray-200 p-5 flex items-center gap-4">
+        <div class="w-12 h-12 bg-nova-100 rounded-xl flex items-center justify-center">
+            <i class="fa-solid fa-tag text-nova-600 text-xl"></i>
+        </div>
+        <div>
+            <p class="text-2xl font-bold text-gray-900">{{ total }}</p>
+            <p class="text-sm text-gray-500">Jami promokodlar</p>
+        </div>
+    </div>
+    <div class="bg-white rounded-2xl border border-gray-200 p-5 flex items-center gap-4">
+        <div class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
+            <i class="fa-solid fa-circle-check text-green-600 text-xl"></i>
+        </div>
+        <div>
+            <p class="text-2xl font-bold text-gray-900">{{ active_count }}</p>
+            <p class="text-sm text-gray-500">Faol promokodlar</p>
+        </div>
+    </div>
+    <div class="bg-white rounded-2xl border border-gray-200 p-5 flex items-center gap-4">
+        <div class="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center">
+            <i class="fa-solid fa-ban text-amber-600 text-xl"></i>
+        </div>
+        <div>
+            <p class="text-2xl font-bold text-gray-900">{{ total|add:"-"|add:active_count }}</p>
+            <p class="text-sm text-gray-500">Nofaol</p>
+        </div>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Promo Codes Table -->
+    <div class="lg:col-span-2 bg-white rounded-2xl border border-gray-200 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100">
+            <h3 class="font-semibold text-gray-800">
+                <i class="fa-solid fa-list mr-2 text-gray-400"></i>Promokodlar ro'yxati
+            </h3>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead class="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider">
+                    <tr>
+                        <th class="px-6 py-3 text-left">Kod</th>
+                        <th class="px-6 py-3 text-left">Chegirma</th>
+                        <th class="px-6 py-3 text-left">Ishlatilgan</th>
+                        <th class="px-6 py-3 text-left">Holat</th>
+                        <th class="px-6 py-3 text-left">Amal qilish</th>
+                        <th class="px-6 py-3 text-right">Amallar</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                    {% for pc in promocodes %}
+                    <tr class="hover:bg-gray-50 transition-colors">
+                        <td class="px-6 py-3">
+                            <span class="font-mono font-bold text-gray-800 bg-gray-100 px-2 py-1 rounded text-xs">{{ pc.code }}</span>
+                        </td>
+                        <td class="px-6 py-3 font-semibold text-gray-800">
+                            {{ pc.discount_value }}{% if pc.discount_type == 'percent' %}%{% else %} UZS{% endif %}
+                        </td>
+                        <td class="px-6 py-3 text-gray-600">{{ pc.used_count }} / {{ pc.max_uses }}</td>
+                        <td class="px-6 py-3">
+                            {% if pc.is_active %}
+                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700">
+                                <i class="fa-solid fa-check text-[8px]"></i> Faol
+                            </span>
+                            {% else %}
+                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
+                                <i class="fa-solid fa-xmark text-[8px]"></i> Nofaol
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-3 text-xs text-gray-500">
+                            {% if pc.expires_at %}{{ pc.expires_at|date:"d M Y" }}{% else %}Cheksiz{% endif %}
+                        </td>
+                        <td class="px-6 py-3 text-right">
+                            <div class="flex items-center justify-end gap-1">
+                                <form method="post" class="inline">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="action" value="toggle">
+                                    <input type="hidden" name="promo_id" value="{{ pc.id }}">
+                                    <button type="submit" class="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-nova-600 transition" title="O'zgartirish">
+                                        <i class="fa-solid fa-toggle-on text-sm"></i>
+                                    </button>
+                                </form>
+                                <form method="post" class="inline" onsubmit="return confirm('O\'chirilsinmi?')">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="action" value="delete">
+                                    <input type="hidden" name="promo_id" value="{{ pc.id }}">
+                                    <button type="submit" class="p-1.5 rounded-lg hover:bg-red-50 text-gray-500 hover:text-red-600 transition" title="O'chirish">
+                                        <i class="fa-solid fa-trash text-sm"></i>
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="px-6 py-12 text-center text-gray-400">
+                            <i class="fa-solid fa-tag text-3xl mb-2 block"></i>
+                            Promokodlar yo'q
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Add Promo Code Form -->
+    <div class="bg-white rounded-2xl border border-gray-200 p-6">
+        <div class="flex items-center gap-3 mb-5">
+            <div class="w-10 h-10 bg-nova-100 rounded-xl flex items-center justify-center">
+                <i class="fa-solid fa-plus text-nova-600"></i>
+            </div>
+            <h3 class="font-semibold text-gray-800">Yangi promokod</h3>
+        </div>
+        <form method="post" class="space-y-4">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="add">
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Promokod</label>
+                <input type="text" name="code" required placeholder="MASalan: YANGI2024"
+                       class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-mono uppercase focus:ring-2 focus:ring-nova-500 focus:border-nova-500 outline-none transition">
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Chegirma turi</label>
+                <select name="discount_type"
+                        class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-nova-500 focus:border-nova-500 outline-none transition">
+                    <option value="percent">Foiz (%)</option>
+                    <option value="fixed">Soni (UZS)</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Chegirma qiymati</label>
+                <input type="number" name="discount_value" value="10" min="1"
+                       class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-nova-500 focus:border-nova-500 outline-none transition">
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Maksimal ishlatish</label>
+                <input type="number" name="max_uses" value="100" min="1"
+                       class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-nova-500 focus:border-nova-500 outline-none transition">
+            </div>
+
+            <button type="submit"
+                    class="w-full px-4 py-3 bg-nova-600 hover:bg-nova-700 text-white font-semibold rounded-xl shadow-lg shadow-nova-500/25 transition-all flex items-center justify-center gap-2">
+                <i class="fa-solid fa-plus"></i> Qo'shish
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}

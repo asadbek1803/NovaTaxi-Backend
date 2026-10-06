@@ -1,0 +1,530 @@
+# Nova Taxi — Haydovchi Ilovasi API Dokumentatsiyasi
+
+> **Base URL:** `https://api.novataxi.uz`
+> **API versiyasi:** `/v1`
+> **WebSocket URL:** `wss://api.novataxi.uz`
+
+---
+
+## Umumiy Ma'lumotlar
+
+### Autentifikatsiya
+
+Barcha HTTP so'rovlar (ro'yxatdan o'tish va OTP yuborishdan tashqari) quyidagi headerlarni talab qiladi:
+
+```
+Content-Type: application/json
+Accept: application/json
+Authorization: Bearer <access_token>
+```
+
+### Xato Formatlari
+
+Xatolik yuz berganda server quyidagi formatdagi javobni qaytishi kerak:
+
+```json
+{
+  "message": "Xato tavsifi",
+  "error": "Xato kodi (ixtiyoriy)"
+}
+```
+
+HTTP status kodlari:
+- `200` — Muvaffaqiyatli
+- `201` — Yaratildi
+- `400` — Noto'g'ri so'rov
+- `401` — Autentifikatsiya xatosi
+- `403` — Ruxsatsiz
+- `404` — Topilmadi
+- `422` — Validatsiya xatosi
+- `500` — Server xatosi
+
+---
+
+## 1. Autentifikatsiya
+
+### 1.1 OTP Yuborish
+
+Haydovchi telefon raqamiga tasdiqlash kodi yuboradi.
+
+```
+POST /v1/auth/send-otp
+```
+
+**So'rov Body:**
+```json
+{
+  "phone_number": "+998901234567"
+}
+```
+
+| Maydon | Tur | Majburiy | Tavsif |
+|--------|-----|----------|--------|
+| `phone_number` | string | Ha | Xalqaro formatdagi telefon raqami (+998XXXXXXXXX) |
+
+**Javob:**
+```
+200 OK
+```
+Body bo'lishi shart emas. Muvaffaqiyatli yuborilganini bildiradi.
+
+---
+
+### 1.2 OTP Tasdiqlash
+
+Haydovchi olgan kodni tasdiqlaydi. Muvaffaqiyatli bo'lsa, token va haydovchi ma'lumotlari qaytariladi.
+
+```
+POST /v1/auth/verify-otp
+```
+
+**So'rov Body:**
+```json
+{
+  "phone_number": "+998901234567",
+  "otp": "123456"
+}
+```
+
+| Maydon | Tur | Majburiy | Tavsif |
+|--------|-----|----------|--------|
+| `phone_number` | string | Ha | Ro'yxatdan o'tgan telefon raqami |
+| `otp` | string | Ha | SMS orqali kelgan 6 xonali kod |
+
+**Javob:**
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIs...",
+  "refresh_token": "eyJhbGciOiJIUzI1NiIs...",
+  "driver_id": 42,
+  "phone_number": "+998901234567",
+  "status": "pending",
+  "full_name": null,
+  "driver_license": null,
+  "created_at": "2026-07-26T10:00:00.000Z",
+  "rejection_reason": null
+}
+```
+
+| Maydon | Tur | Tavsif |
+|--------|-----|--------|
+| `access_token` | string | JWT kirish tokeni — barcha keyingi so'rovlarda ishlatiladi |
+| `refresh_token` | string | Yangilash tokeni |
+| `driver_id` | int | Haydovchi unikal ID raqami |
+| `phone_number` | string | Telefon raqami |
+| `status` | string | Haydovchi holati (quyidagilardan biri: `pending`, `approved`, `rejected`, `active`, `inactive`) |
+| `full_name` | string\|null | To'liq ism (yangi haydovchilar uchun null) |
+| `driver_license` | string\|null | Haydovchilik guvohnomasi raqami |
+| `created_at` | string\|null | Ro'yxatdan o'tgan sana (ISO 8601) |
+| `rejection_reason` | string\|null | Rad etilgan bo'lsa, sababi |
+
+**Haydovchi Holatlari (`status`):**
+
+| Holat | Tavsif |
+|-------|--------|
+| `pending` | Ro'yxatdan o'tgan, tekshirish kutilmoqda |
+| `approved` | Tasdiqlangan, hali ish boshlamagan |
+| `rejected` | Rad etilgan |
+| `active` | Faol — onlayn va buyurtma qabul qilmoqda |
+| `inactive` | Nofaol — chiqishgan |
+
+---
+
+### 1.3 Ro'yxatdan O'tish
+
+Yangi haydovchi ro'yxatdan o'tadi. Ilova avtomatik ravishda so'rov yuboradi.
+
+```
+POST /v1/auth/register
+```
+
+**So'rov Body:**
+```json
+{
+  "phone_number": "+998901234567",
+  "full_name": "Abdullayev Jasur",
+  "car_model": "Chevrolet Cobalt",
+  "car_color": "Oq",
+  "license_plate": "01 A 123 BC",
+  "driver_license": "B789456"
+}
+```
+
+| Maydon | Tur | Majburiy | Tavsif |
+|--------|-----|----------|--------|
+| `phone_number` | string | Ha | Telefon raqami |
+| `full_name` | string | Ha | To'liq ism |
+| `car_model` | string | Ha | Transport markasi va modeli |
+| `car_color` | string | Ha | Transport rangi |
+| `license_plate` | string | Ha | Davlat raqami |
+| `driver_license` | string | Ha | Haydovchilik guvohnomasi raqami |
+
+**Javob:** 1.2 bo'limidagi `verify-otp` bilan bir xil format.
+
+---
+
+## 2. Haydovchi Profili
+
+### 2.1 Haydovchi Holatini Olish
+
+Token asosida haydovchining joriy holatini va ma'lumotlarini oladi. App ochilganda va token mavjud bo'lsa avtomatik chaqiriladi.
+
+```
+GET /v1/drivers/status
+```
+
+**So'rov:** Body talab qilinmaydi. Token header orqali yuboriladi.
+
+**Javob:**
+```json
+{
+  "id": 42,
+  "phone_number": "+998901234567",
+  "full_name": "Abdullayev Jasur",
+  "driver_license": "B789456",
+  "status": "approved",
+  "created_at": "2026-07-26T10:00:00.000Z",
+  "rejection_reason": null
+}
+```
+
+| Maydon | Tur | Tavsif |
+|--------|-----|--------|
+| `id` | int | Haydovchi ID |
+| `phone_number` | string | Telefon raqami |
+| `full_name` | string\|null | To'liq ism |
+| `driver_license` | string\|null | Guvohnoma raqami |
+| `status` | string | Holat (`pending` / `approved` / `rejected` / `active` / `inactive`) |
+| `created_at` | string\|null | Yaratilgan sana |
+| `rejection_reason` | string\|null | Rad etish sababi |
+
+---
+
+### 2.2 Onboarding (Hujjatlar) Yuborish
+
+Yangi ro'yxatdan o'tgan haydovchi transport va hujjat ma'lumotlarini yuboradi. Fayllar multipart/form-data formatida yuklanadi.
+
+```
+POST /v1/drivers/onboarding
+Content-Type: multipart/form-data
+```
+
+**So'rov — Maydonlar (Fields):**
+
+| Maydon | Tur | Majburiy | Tavsif |
+|--------|-----|----------|--------|
+| `phone_number` | string | Ha | Telefon raqami |
+| `full_name` | string | Ha | To'liq ism |
+| `car_model` | string | Ha | Transport modeli |
+| `car_color` | string | Ha | Transport rangi |
+| `license_plate` | string | Ha | Davlat raqami |
+| `driver_license` | string | Ha | Guvohnoma raqami |
+
+**So'rov — Fayllar (Files):**
+
+| Kalit | Majburiy | Tavsif |
+|-------|----------|--------|
+| `passport` | Ha | Pasport rasmi (jpg/png, max 5MB) |
+| `selfie` | Ha | Selfie — yuz rasmi (jpg/png, max 5MB) |
+| `car_photo` | Ha | Transport rasmi — old tomondan (jpg/png, max 5MB) |
+
+**Javob:**
+```
+200 OK
+```
+Muvaffaqiyatli qabul qilindi. Haydovchi holati `pending` bo'ladi.
+
+---
+
+### 2.3 FCM Token Yuborish
+
+Push bildirishnomalar uchun qurilma tokenini serverga saqlaydi.
+
+```
+POST /v1/drivers/fcm-token
+```
+
+**So'rov Body:**
+```json
+{
+  "fcm_token": "dXe0xK5JQ_aBcDeFgHiJk..."
+}
+```
+
+| Maydon | Tur | Majburiy | Tavsif |
+|--------|-----|----------|--------|
+| `fcm_token` | string | Ha | Firebase Cloud Messaging qurilma tokeni |
+
+**Javob:**
+```
+200 OK
+```
+
+**Eslatma:** Ilova ochilganda va har safar token yangilanganda chaqirilishi kerak.
+
+---
+
+## 3. WebSocket — Real-Vaqt Aloqa
+
+### 3.1 Ulash
+
+```
+wss://api.novataxi.uz/ws/driver/?token=<access_token>&driver_id=<driver_id>
+```
+
+| Parametr | Tavsif |
+|----------|--------|
+| `token` | JWT access token |
+| `driver_id` | Haydovchi ID raqami |
+
+**Ulanish holatlari:**
+- `disconnected` — Ulanmagan
+- `connecting` — Ulanmoqda
+- `connected` — Ulangan
+
+**Qayta ulanish:** Agar ulanish uzilsa, ilova har 2-30 soniyada (eksponensial kechiktirish bilan) avtomatik qayta ulanadi. Maksimum 10 ta urinish.
+
+---
+
+### 3.2 Server → Haydovchi (Kiritilgan Xabarlar)
+
+#### Yangi Buyurtma
+
+Haydovchiga yangi buyurtma kelganda server yuboradi.
+
+```json
+{
+  "type": "new_order",
+  "order": {
+    "id": "order_abc123",
+    "pickupAddress": "Toshkent, Amir Temur ko'chasi 1",
+    "destinationAddress": "Toshkent, Mustaqillik ko'chasi 45",
+    "price": 25000,
+    "distance": "4.2 km",
+    "estimatedTime": "12 daqiqa",
+    "pickupLat": 41.3112,
+    "pickupLng": 69.2784,
+    "destinationLat": 41.2995,
+    "destinationLng": 69.2401
+  }
+}
+```
+
+| Order maydoni | Tur | Tavsif |
+|---------------|-----|--------|
+| `id` | string | Buyurtma unikal ID |
+| `pickupAddress` | string | Olish manzili (odam o'qiydigan ko'rinish) |
+| `destinationAddress` | string | Borish manzili |
+| `price` | int | Narx (so'mda) |
+| `distance` | string | Masofa (formatlangan) |
+| `estimatedTime` | string | Taxminiy vaqt (formatlangan) |
+| `pickupLat` | double | Olish joyi kenglik koordinatasi |
+| `pickupLng` | double | Olish joyi uzunlik koordinatasi |
+| `destinationLat` | double | Borish joyi kenglik koordinatasi |
+| `destinationLng` | double | Borish joyi uzunlik koordinatasi |
+
+#### Pong (Ulanishni tekshirish)
+
+```json
+{
+  "type": "pong"
+}
+```
+
+Har 20 soniyada client `ping` yuboradi, server `pong` bilan javob beradi.
+
+#### Joylashuv Tasdiqlash
+
+```json
+{
+  "type": "driver_location_ack",
+  "lat": 41.3112,
+  "lng": 69.2784
+}
+```
+
+Server haydovchining joylashuvini qabul qilganini tasdiqlaydi.
+
+---
+
+### 3.3 Haydovchi → Server (Chiqarilgan Xabarlar)
+
+#### Joylashuv Yuborish
+
+Haydovchi onlayn bo'lganda har **10 soniyada** joriy GPS koordinatasini serverga yuboradi.
+
+```json
+{
+  "type": "driver_location",
+  "lat": 41.3112,
+  "lng": 69.2784
+}
+```
+
+| Maydon | Tur | Tavsif |
+|--------|-----|--------|
+| `type` | string | `driver_location` |
+| `lat` | double | Kenglik koordinatasi |
+| `lng` | double | Uzunlik koordinatasi |
+
+#### Ping (Ulanishni saqlash)
+
+Har **20 soniyada** yuboriladi.
+
+```json
+{
+  "type": "ping"
+}
+```
+
+#### Buyurtmani Qabul Qilish
+
+Haydovchi buyurtmani qabul qilganda.
+
+```json
+{
+  "type": "accept_order",
+  "order_id": "order_abc123"
+}
+```
+
+| Maydon | Tur | Tavsif |
+|--------|-----|--------|
+| `type` | string | `accept_order` |
+| `order_id` | string | Qabul qilinayotgan buyurtma ID si |
+
+#### Buyurtmani Rad Etish
+
+Haydovchi buyurtmani rad etganda yoki vaqt tugaganda.
+
+```json
+{
+  "type": "decline_order",
+  "order_id": "order_abc123"
+}
+```
+
+| Maydon | Tur | Tavsif |
+|--------|-----|--------|
+| `type` | string | `decline_order` |
+| `order_id` | string | Rad etilayotgan buyurtma ID si |
+
+#### Safar Holatini Yangilash
+
+Haydovchi safar bosqichlari o'zgarganda yuboriladi.
+
+```json
+{
+  "type": "ride_status",
+  "order_id": "order_abc123",
+  "status": "arrived"
+}
+```
+
+| Maydon | Tur | Tavsif |
+|--------|-----|--------|
+| `type` | string | `ride_status` |
+| `order_id` | string | Buyurtma ID si |
+| `status` | string | Safar holati (quyidagilardan biri) |
+
+**Safar Holatlari (`status`):**
+
+| Holat | Tavsif | Qachon yuboriladi |
+|-------|--------|-------------------|
+| `accepted` | Qabul qilindi | Haydovchi "Qabul qilish" tugmasini bosganda |
+| `arrived` | Olish joyiga yetib keldi | Haydovchi olish joyiga yetganda |
+| `trip_started` | Safar boshlandi | Haydovchi "Safarni boshlash" tugmasini bosganda |
+| `trip_completed` | Safar tugadi | Haydovchi "Safarni tugatish" tugmasini bosganda |
+
+---
+
+## 4. Safar Hayoti Sikli
+
+Haydovchi uchun buyurtma qabul qilinishidan to safar tugaguncha bosqichma-bosqich ketma-ketlik:
+
+```
+┌─────────────────┐
+│  Onlayn holat   │  ← GPS joylashuv serverga yuboriladi (har 10s)
+│  (WS ulangan)   │  ← Serverdan "new_order" kutilmoqda
+└────────┬────────┘
+         │ Server "new_order" yuboradi
+         ▼
+┌─────────────────┐
+│  Buyurtma       │  ← 30 soniya vaqt chegarasi
+│  kutilmoqda     │  ← Haydovchi qabul qilishi yoki rad etishi kerak
+└────────┬────────┘
+         │ accept_order / decline_order
+         ▼
+┌─────────────────┐
+│  Yo'nalishda    │  ← "arrived" status yuboriladi
+│  olish joyiga   │  ← Haydovchi manzilga yaqinlashmoqda
+└────────┬────────┘
+         │ Yetib keldi (arrived)
+         ▼
+┌─────────────────┐
+│  Yo'nalishda    │  ← "trip_started" status yuboriladi
+│  manzilga       │  ← Haydovchi yo'lda
+└────────┬────────┘
+         │ Manzilga yetdi
+         ▼
+┌─────────────────┐
+│  Safar tugadi   │  ← "trip_completed" status yuboriladi
+│  (daromad +)    │  ← Yangi buyurtmalar kutilmoqda
+└─────────────────┘
+```
+
+---
+
+## 5. Ma'lumot Tuzilmalari (Data Models)
+
+### 5.1 Haydovchi (`Driver`)
+
+| Maydon | JSON kalit | Tur | Tavsif |
+|--------|-----------|-----|--------|
+| `id` | `id` | int | Unikal identifikator |
+| `phoneNumber` | `phone_number` | string | Telefon raqami |
+| `fullName` | `full_name` | string\|null | To'liq ism |
+| `driverLicense` | `driver_license` | string\|null | Guvohnoma raqami |
+| `status` | `status` | string | Holat |
+| `createdAt` | `created_at` | string\|null | Ro'yxatdan o'tgan sana (ISO 8601) |
+| `rejectionReason` | `rejection_reason` | string\|null | Rad etish sababi |
+
+### 5.2 Buyurtma (`Order`)
+
+| Maydon | JSON kalit | Tur | Tavsif |
+|--------|-----------|-----|--------|
+| `id` | `id` | string | Buyurtma ID |
+| `pickupAddress` | `pickupAddress` | string | Olish manzili |
+| `destinationAddress` | `destinationAddress` | string | Borish manzili |
+| `price` | `price` | int | Narx (so'm) |
+| `distance` | `distance` | string | Masofa |
+| `estimatedTime` | `estimatedTime` | string | Taxminiy vaqt |
+| `pickupLat` | `pickupLat` | double | Olish kenglik |
+| `pickupLng` | `pickupLng` | double | Olish uzunlik |
+| `destinationLat` | `destinationLat` | double | Borish kenglik |
+| `destinationLng` | `destinationLng` | double | Borish uzunlik |
+
+---
+
+## 6. API Nuqtalari Ro'yxati
+
+| # | Metod | Endpoint | Maqsad |
+|---|-------|----------|--------|
+| 1 | `POST` | `/v1/auth/send-otp` | SMS OTP yuborish |
+| 2 | `POST` | `/v1/auth/verify-otp` | OTP tasdiqlash + token olish |
+| 3 | `POST` | `/v1/auth/register` | Haydovchini ro'yxatdan o'tkazish |
+| 4 | `GET` | `/v1/drivers/status` | Haydovchi holatini olish |
+| 5 | `POST` | `/v1/drivers/onboarding` | Hujjat va transport ma'lumotlarini yuborish (multipart) |
+| 6 | `POST` | `/v1/drivers/fcm-token` | FCM tokenini saqlash |
+| 7 | `WS` | `/ws/driver/?token=&driver_id=` | Real-vaqt buyurtma va joylashuv |
+
++ Thought: 305ms
+API_DOCUMENTATION.md — loyihaning ildizida yaratildi. Quyidagilarni qamrab oladi:
+6 ta HTTP Endpoint:
+#	Metod	Endpoint	Maqsad
+1	POST	/v1/auth/send-otp	SMS OTP yuborish
+2	POST	/v1/auth/verify-otp	OTP tasdiqlash + token
+3	POST	/v1/auth/register	Ro'yxatdan o'tish
+4	GET	/v1/drivers/status	Haydovchi holati
+5	POST	/v1/drivers/onboarding	Hujjatlar (multipart)
+6	POST	/v1/drivers/fcm-token	Push token

@@ -1,0 +1,307 @@
+{% extends 'panel/base.html' %}
+
+{% block title %}Tariflar - Nova Taxi Admin{% endblock %}
+{% block page_title %}Tariflar / Narxlar{% endblock %}
+
+{% block content %}
+<div x-data="{
+    editOpen: false,
+    editCat: {},
+    init() {
+        window.addEventListener('edit-cat', e => {
+            this.editCat = e.detail;
+            this.editOpen = true;
+        });
+    }
+}">
+
+<!-- Active Surge Banner -->
+{% if active_surge %}
+<div class="mb-6 bg-gradient-to-r from-red-500 to-orange-500 rounded-2xl p-5 text-white shadow-lg shadow-red-500/20">
+    <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <div class="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
+                <i class="fa-solid fa-bolt-lightning text-xl"></i>
+            </div>
+            <div>
+                <p class="text-lg font-bold">Surge Pricing Faol: {{ active_surge.multiplier }}x</p>
+                <p class="text-sm text-red-100">{{ active_surge.name }} — {{ active_surge.get_reason_display }}</p>
+            </div>
+        </div>
+        <form method="post" class="inline">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="toggle_surge">
+            <input type="hidden" name="surge_id" value="{{ active_surge.id }}">
+            <button type="submit" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-xl text-sm font-medium backdrop-blur-sm transition-colors">
+                <i class="fa-solid fa-power-off mr-1"></i> O'chirish
+            </button>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<!-- ===== EDIT MODAL ===== -->
+<div x-show="editOpen" x-cloak
+     x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
+     x-transition:leave="transition ease-in duration-150" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
+     class="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="editOpen = false"></div>
+    <div x-show="editOpen"
+         x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 scale-95 translate-y-4" x-transition:enter-end="opacity-100 scale-100 translate-y-0"
+         x-transition:leave="transition ease-in duration-150" x-transition:leave-start="opacity-100 scale-100 translate-y-0" x-transition:leave-end="opacity-0 scale-95 translate-y-4"
+         @click.away="editOpen = false"
+         class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+
+        <!-- Header -->
+        <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-gradient-to-br from-nova-400 to-nova-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-nova-500/20">
+                    <i class="fa-solid fa-pen-to-square text-sm"></i>
+                </div>
+                <div>
+                    <h3 class="font-bold text-gray-800" x-text="editCat.name || 'Tarif'"></h3>
+                    <p class="text-[11px] text-gray-400">Narxlarni tahrirlash</p>
+                </div>
+            </div>
+            <button @click="editOpen = false" class="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+        </div>
+
+        <!-- Form -->
+        <form method="post" class="p-6 space-y-4">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="update_tariff">
+            <input type="hidden" name="cat_id" :value="editCat.id">
+
+            <!-- Name -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Nomi</label>
+                <input type="text" name="cat_name" :value="editCat.name"
+                    class="w-full px-4 py-2.5 rounded-xl border border-gray-300 text-sm focus:ring-2 focus:ring-nova-500 focus:border-nova-500 outline-none transition">
+            </div>
+
+            <!-- Base Fare -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Boshlang'ich narx (UZS)</label>
+                <input type="number" name="base_fare" :value="editCat.base_fare" min="0" step="500"
+                    class="w-full px-4 py-2.5 rounded-xl border border-gray-300 text-sm font-semibold focus:ring-2 focus:ring-nova-500 focus:border-nova-500 outline-none transition">
+            </div>
+
+            <!-- Price per KM -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Har km uchun (UZS)</label>
+                <input type="number" name="price_per_km" :value="editCat.price_per_km" min="0" step="100"
+                    class="w-full px-4 py-2.5 rounded-xl border border-gray-300 text-sm font-semibold focus:ring-2 focus:ring-nova-500 focus:border-nova-500 outline-none transition">
+            </div>
+
+            <!-- Price per Minute -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Har daqiqa uchun (UZS)</label>
+                <input type="number" name="price_per_minute" :value="editCat.price_per_minute" min="0" step="50"
+                    class="w-full px-4 py-2.5 rounded-xl border border-gray-300 text-sm font-semibold focus:ring-2 focus:ring-nova-500 focus:border-nova-500 outline-none transition">
+            </div>
+
+            <!-- ETA -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Taxminiy kelish vaqti (daqiqa)</label>
+                <input type="number" name="estimated_arrival_time" :value="editCat.estimated_arrival_time" min="1" max="60"
+                    class="w-full px-4 py-2.5 rounded-xl border border-gray-300 text-sm font-semibold focus:ring-2 focus:ring-nova-500 focus:border-nova-500 outline-none transition">
+            </div>
+
+            <!-- Description -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Tavsif</label>
+                <input type="text" name="cat_description" :value="editCat.description"
+                    class="w-full px-4 py-2.5 rounded-xl border border-gray-300 text-sm focus:ring-2 focus:ring-nova-500 focus:border-nova-500 outline-none transition">
+            </div>
+
+            <!-- Footer -->
+            <div class="flex items-center justify-end gap-2 pt-3 border-t border-gray-100">
+                <button type="button" @click="editOpen = false"
+                    class="px-4 py-2.5 rounded-xl text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors">
+                    Bekor qilish
+                </button>
+                <button type="submit" onclick="return confirm('Saqlashni xohlaysizmi?')"
+                    class="bg-gradient-to-r from-nova-500 to-nova-600 text-white px-6 py-2.5 rounded-xl text-sm font-semibold hover:from-nova-600 hover:to-nova-700 transition-all shadow-lg shadow-nova-500/20">
+                    <i class="fa-solid fa-check mr-1"></i> Saqlash
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+<!-- ===== /EDIT MODAL ===== -->
+
+<!-- Tariff Cards -->
+<h3 class="text-sm font-semibold text-gray-500 uppercase tracking-widest mb-3">Kategoriya Tariflari</h3>
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+    {% for cat in categories %}
+    <div class="bg-white rounded-2xl border border-gray-200 overflow-hidden hover:shadow-lg hover:shadow-gray-200/50 transition-shadow">
+        <div class="p-5 bg-gradient-to-r {% if cat.id == 'economy' %}from-green-50 to-emerald-50{% elif cat.id == 'comfort' %}from-blue-50 to-indigo-50{% elif cat.id == 'business' %}from-purple-50 to-violet-50{% elif cat.id == 'cargo' %}from-amber-50 to-orange-50{% else %}from-gray-50 to-slate-50{% endif %}">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg
+                        {% if cat.id == 'economy' %}bg-green-100 text-green-600
+                        {% elif cat.id == 'comfort' %}bg-blue-100 text-blue-600
+                        {% elif cat.id == 'business' %}bg-purple-100 text-purple-600
+                        {% elif cat.id == 'cargo' %}bg-amber-100 text-amber-600
+                        {% else %}bg-gray-100 text-gray-600{% endif %}">
+                        <i class="fa-solid {% if cat.id == 'economy' %}fa-car{% elif cat.id == 'comfort' %}fa-car-side{% elif cat.id == 'business' %}fa-gem{% elif cat.id == 'cargo' %}fa-truck{% else %}fa-car{% endif %}"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-gray-800 text-lg">{{ cat.name }}</h3>
+                        <p class="text-xs text-gray-500">ID: {{ cat.id }}{% if cat.is_cargo %} · Yuk{% endif %}</p>
+                    </div>
+                </div>
+                <button @click="$dispatch('edit-cat', { id: '{{ cat.id }}', name: '{{ cat.name|escapejs }}', base_fare: {{ cat.base_fare }}, price_per_km: {{ cat.price_per_km }}, price_per_minute: {{ cat.price_per_minute }}, estimated_arrival_time: {{ cat.estimated_arrival_time }}, description: '{{ cat.description|escapejs }}' })"
+                    class="w-8 h-8 rounded-lg flex items-center justify-center text-sm bg-white/80 text-gray-500 hover:text-nova-600 hover:bg-white transition-colors shadow-sm"
+                    title="Tahrirlash">
+                    <i class="fa-solid fa-pen-to-square"></i>
+                </button>
+            </div>
+        </div>
+        <div class="p-5">
+            {% if cat.description %}
+            <p class="text-sm text-gray-500 mb-4">{{ cat.description }}</p>
+            {% endif %}
+            <div class="space-y-3">
+                <div class="flex items-center justify-between py-2 border-b border-gray-100">
+                    <span class="text-sm text-gray-500">Boshlang'ich narx</span>
+                    <span class="font-bold text-gray-800">{{ cat.base_fare|floatformat:0 }} <span class="text-xs font-normal text-gray-400">UZS</span></span>
+                </div>
+                <div class="flex items-center justify-between py-2 border-b border-gray-100">
+                    <span class="text-sm text-gray-500">Har km uchun</span>
+                    <span class="font-semibold text-gray-800">{{ cat.price_per_km|floatformat:0 }} <span class="text-xs font-normal text-gray-400">UZS</span></span>
+                </div>
+                <div class="flex items-center justify-between py-2 border-b border-gray-100">
+                    <span class="text-sm text-gray-500">Har daqiqa uchun</span>
+                    <span class="font-semibold text-gray-800">{{ cat.price_per_minute|floatformat:0 }} <span class="text-xs font-normal text-gray-400">UZS</span></span>
+                </div>
+                <div class="flex items-center justify-between py-2">
+                    <span class="text-sm text-gray-500">Taxminiy kelish vaqti</span>
+                    <span class="font-semibold text-gray-800">{{ cat.estimated_arrival_time }} <span class="text-xs font-normal text-gray-400">daq</span></span>
+                </div>
+            </div>
+            <div class="mt-4">
+                <form method="post" class="inline">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="toggle_category">
+                    <input type="hidden" name="cat_id" value="{{ cat.id }}">
+                    <button type="submit" class="w-full text-center text-sm py-2 rounded-xl font-medium transition-colors
+                        {% if cat.is_active %}bg-red-50 text-red-600 hover:bg-red-100{% else %}bg-green-50 text-green-600 hover:bg-green-100{% endif %}">
+                        {% if cat.is_active %}<i class="fa-solid fa-toggle-off mr-1"></i> O'chirish{% else %}<i class="fa-solid fa-toggle-on mr-1"></i> Yoqish{% endif %}
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% empty %}
+    <div class="col-span-full bg-white rounded-2xl border border-gray-200 px-6 py-16 text-center text-gray-400">
+        <i class="fa-solid fa-tags text-4xl mb-3 block"></i>
+        <p class="text-lg font-medium">Tariflar hali yaratilmagan</p>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Surge Pricing Section -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <!-- Add Surge Form -->
+    <div class="bg-white rounded-2xl border border-gray-200 p-6">
+        <h3 class="font-semibold text-gray-800 mb-4">
+            <i class="fa-solid fa-bolt-lightning mr-2 text-amber-500"></i>Yangi Surge Narxi Qo'shish
+        </h3>
+        <form method="post" class="space-y-4">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="add_surge">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Nomi</label>
+                <input type="text" name="surge_name" required placeholder="Masalan: Kunduzgi yomg'ir"
+                    class="w-full px-4 py-2.5 rounded-xl border border-gray-300 text-sm focus:ring-2 focus:ring-nova-500 focus:border-nova-500 outline-none">
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Sabab</label>
+                    <select name="surge_reason" class="w-full px-4 py-2.5 rounded-xl border border-gray-300 text-sm focus:ring-2 focus:ring-nova-500 focus:border-nova-500 outline-none">
+                        <option value="weather">Ob-havo</option>
+                        <option value="traffic">Tirbandlik</option>
+                        <option value="demand">Yuqori talab</option>
+                        <option value="night">Tungi tarif</option>
+                        <option value="holiday">Bayram</option>
+                        <option value="custom" selected>Boshqa</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Koeffitsient (x)</label>
+                    <input type="number" name="surge_multiplier" min="1.0" max="5.0" step="0.1" value="1.5"
+                        class="w-full px-4 py-2.5 rounded-xl border border-gray-300 text-sm focus:ring-2 focus:ring-nova-500 focus:border-nova-500 outline-none">
+                    <p class="text-[11px] text-gray-400 mt-1">1.0 = oddiy narx, 2.0 = 2 baravar</p>
+                </div>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Tavsif (ixtiyoriy)</label>
+                <textarea name="surge_description" rows="2" placeholder="Surge haqida qo'shimcha ma'lumot..."
+                    class="w-full px-4 py-2.5 rounded-xl border border-gray-300 text-sm focus:ring-2 focus:ring-nova-500 focus:border-nova-500 outline-none resize-none"></textarea>
+            </div>
+            <button type="submit" class="w-full bg-gradient-to-r from-nova-500 to-nova-600 text-white py-2.5 rounded-xl text-sm font-semibold hover:from-nova-600 hover:to-nova-700 transition-all shadow-lg shadow-nova-500/20">
+                <i class="fa-solid fa-plus mr-1"></i> Surge Narxini Qo'shish
+            </button>
+        </form>
+    </div>
+
+    <!-- Surge History -->
+    <div class="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100">
+            <h3 class="font-semibold text-gray-800">
+                <i class="fa-solid fa-clock-rotate-left mr-2 text-gray-400"></i>Surge Tarixi
+            </h3>
+        </div>
+        <div class="divide-y divide-gray-100 max-h-[450px] overflow-y-auto">
+            {% for surge in surges %}
+            <div class="px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-full flex items-center justify-center
+                        {% if surge.is_active %}bg-green-100 text-green-600{% else %}bg-gray-100 text-gray-400{% endif %}">
+                        <i class="fa-solid fa-bolt-lightning text-sm"></i>
+                    </div>
+                    <div>
+                        <p class="font-medium text-gray-800 text-sm">{{ surge.name }}</p>
+                        <p class="text-[11px] text-gray-400">{{ surge.get_reason_display }} · {{ surge.created_at|date:"d M, H:i" }}</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="text-lg font-bold {% if surge.is_active %}text-green-600{% else %}text-gray-400{% endif %}">{{ surge.multiplier }}x</span>
+                    <div class="flex items-center gap-1">
+                        <form method="post" class="inline">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="toggle_surge">
+                            <input type="hidden" name="surge_id" value="{{ surge.id }}">
+                            <button type="submit" class="w-8 h-8 rounded-lg flex items-center justify-center text-sm transition-colors
+                                {% if surge.is_active %}bg-green-50 text-green-600 hover:bg-green-100{% else %}bg-gray-100 text-gray-500 hover:bg-gray-200{% endif %}"
+                                title="{% if surge.is_active %}O'chirish{% else %}Yoqish{% endif %}">
+                                <i class="fa-solid {% if surge.is_active %}fa-toggle-on{% else %}fa-toggle-off{% endif %}"></i>
+                            </button>
+                        </form>
+                        <form method="post" class="inline">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="delete_surge">
+                            <input type="hidden" name="surge_id" value="{{ surge.id }}">
+                            <button type="submit" class="w-8 h-8 rounded-lg flex items-center justify-center text-sm bg-red-50 text-red-500 hover:bg-red-100 transition-colors"
+                                title="O'chirish" onclick="return confirm('Haqiqatan o\'chirmoqchimisiz?')">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            {% empty %}
+            <div class="px-6 py-12 text-center text-gray-400">
+                <i class="fa-solid fa-bolt-lightning text-3xl mb-2 block"></i>
+                <p class="text-sm font-medium">Surge tarixi yo'q</p>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+</div>
+
+{% endblock %}
